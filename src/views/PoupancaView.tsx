@@ -10,14 +10,20 @@ import {
   Sparkles,
   TrendingUp,
   Percent,
-  Coins
+  Coins,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useFinance } from '../context/FinanceContext';
 import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
-import { SavingsGoal } from '../types';
+import { SavingsGoal, ActiveView } from '../types';
 
-export const PoupancaView: React.FC = () => {
+interface PoupancaViewProps {
+  onOpenQuickAdd?: (tab?: any) => void;
+  onSelectView?: (view: ActiveView) => void;
+}
+
+export const PoupancaView: React.FC<PoupancaViewProps> = ({ onOpenQuickAdd, onSelectView }) => {
   const {
     savingsGoals,
     savingsTransactions,
@@ -221,89 +227,132 @@ export const PoupancaView: React.FC = () => {
 
       {/* Grid of Savings Goals */}
       <div>
-        <h3 className="text-base font-bold text-slate-900 dark:text-white mb-3">
-          Metas de Poupança em Andamento ({savingsGoals.length})
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {savingsGoals.map(goal => {
-            const pct = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-            const falta = Math.max(0, goal.targetAmount - goal.currentAmount);
-
-            return (
-              <div
-                key={goal.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4"
-              >
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-base text-slate-900 dark:text-white">{goal.name}</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">Prazo: {formatDate(goal.deadline)}</p>
-                    </div>
-                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-                      {pct.toFixed(0)}%
-                    </span>
-                  </div>
-
-                  <div className="mt-4 space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Poupado:</span>
-                      <strong className="text-sm font-black text-blue-600 dark:text-blue-400">{formatCurrency(goal.currentAmount, cur)}</strong>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Meta:</span>
-                      <strong className="text-slate-700 dark:text-slate-300">{formatCurrency(goal.targetAmount, cur)}</strong>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Falta:</span>
-                      <strong className="text-rose-600 font-semibold">{formatCurrency(falta, cur)}</strong>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full mt-3 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, pct)}%` }}
-                    />
-                  </div>
-
-                  {goal.monthlyTarget > 0 && (
-                    <div className="mt-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-[11px] text-slate-500 flex justify-between">
-                      <span>Reforço planeado:</span>
-                      <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(goal.monthlyTarget, cur)}/mês</strong>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex space-x-2">
-                  <button
-                    onClick={() => {
-                      setSelectedGoal(goal);
-                      setContribType('deposito');
-                      setIsContribModalOpen(true);
-                    }}
-                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Contribuir</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedGoal(goal);
-                      setContribType('resgate');
-                      setIsContribModalOpen(true);
-                    }}
-                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                  >
-                    Retirar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            Metas de Poupança em Andamento ({savingsGoals.length})
+          </h3>
+          <button
+            type="button"
+            onClick={() => setIsGoalModalOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Nova Poupança</span>
+          </button>
         </div>
+
+        {savingsGoals.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 text-center border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-3xl w-16 h-16 mx-auto flex items-center justify-center">
+              <PiggyBank className="w-8 h-8" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-slate-900 dark:text-white">Nenhuma meta de poupança activa</h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                Defina um fundo de emergência familiar, poupança para casa própria ou despesas de início de aulas.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsGoalModalOpen(true)}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Adicionar Primeira Meta</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {savingsGoals.map(goal => {
+              const pct = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+              const falta = Math.max(0, goal.targetAmount - goal.currentAmount);
+
+              return (
+                <div
+                  key={goal.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4"
+                >
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-base text-slate-900 dark:text-white">{goal.name}</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">Prazo: {formatDate(goal.deadline)}</p>
+                      </div>
+                      <span className="text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                        {pct.toFixed(0)}%
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">Poupado:</span>
+                        <strong className="text-sm font-black text-blue-600 dark:text-blue-400">{formatCurrency(goal.currentAmount, cur)}</strong>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">Meta:</span>
+                        <strong className="text-slate-700 dark:text-slate-300">{formatCurrency(goal.targetAmount, cur)}</strong>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">Falta:</span>
+                        <strong className="text-rose-600 font-semibold">{formatCurrency(falta, cur)}</strong>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full mt-3 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, pct)}%` }}
+                      />
+                    </div>
+
+                    {goal.monthlyTarget > 0 && (
+                      <div className="mt-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-[11px] text-slate-500 flex justify-between">
+                        <span>Reforço planeado:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(goal.monthlyTarget, cur)}/mês</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        setSelectedGoal(goal);
+                        setContribType('deposito');
+                        setIsContribModalOpen(true);
+                      }}
+                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Contribuir</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedGoal(goal);
+                        setContribType('resgate');
+                        setIsContribModalOpen(true);
+                      }}
+                      className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Retirar
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Tem a certeza que deseja eliminar permanentemente a meta de poupança "${goal.name}"?`)) {
+                          deleteSavingsGoal(goal.id);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                      title="Eliminar meta de poupança"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Modal Criar Nova Meta de Poupança */}

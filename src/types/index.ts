@@ -1,3 +1,4 @@
+export type { ActiveView } from '../components/layout/Sidebar';
 export type CurrencyCode = 'AOA' | 'USD' | 'EUR';
 
 export interface User {

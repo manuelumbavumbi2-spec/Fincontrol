@@ -186,6 +186,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshData();
   }, [refreshData]);
 
+  // Keep dark mode class in sync with settings
+  useEffect(() => {
+    if (settings?.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [settings?.darkMode]);
+
   // Date filtering logic
   const isDateInPeriod = (dateStr: string, p: PeriodFilter): boolean => {
     if (p === 'todos') return true;

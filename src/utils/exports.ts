@@ -329,6 +329,20 @@ export function exportToCSV(data: Expense[], categories: Category[], people: Per
   URL.revokeObjectURL(url);
 }
 
+export function exportCustomToCSV(rows: Record<string, any>[], filename: string) {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csvRows = rows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(';'));
+  const csvContent = '\uFEFF' + [headers.join(';'), ...csvRows].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function exportJSONBackup(data: any) {
   const jsonStr = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });

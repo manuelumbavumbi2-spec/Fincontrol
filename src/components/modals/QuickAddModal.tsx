@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, TrendingDown, TrendingUp, PiggyBank, Briefcase, ArrowRightLeft, Check } from 'lucide-react';
+import { X, TrendingDown, TrendingUp, PiggyBank, Briefcase, ArrowRightLeft, Check, Plus, Repeat } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
-import { PaymentMethod, RecurrenceType, ExpenseStatus } from '../../types';
+import { PaymentMethod, RecurrenceType, ExpenseStatus, InvestmentType } from '../../types';
 
 interface QuickAddModalProps {
   isOpen: boolean;
@@ -12,7 +12,7 @@ interface QuickAddModalProps {
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, initialTab = 'despesa' }) => {
   const {
     accounts, categories, people, savingsGoals, investments,
-    addExpense, addIncome, contributeSavings, addInvestmentYield, transferMoney,
+    addExpense, addIncome, contributeSavings, addSavingsGoal, addInvestment, addInvestmentYield, transferMoney,
     settings
   } = useFinance();
 
@@ -42,21 +42,31 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
   const [incSource, setIncSource] = useState('');
   const [incDate, setIncDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Savings contribution form
+  // Savings form
+  const [savMode, setSavMode] = useState<'contribuir' | 'criar'>(savingsGoals.length > 0 ? 'contribuir' : 'criar');
   const [savGoalId, setSavGoalId] = useState(savingsGoals[0]?.id || '');
   const [savAmount, setSavAmount] = useState('');
   const [savAccount, setSavAccount] = useState(accounts[0]?.id || 'acc_bai_01');
   const [savType, setSavType] = useState<'deposito' | 'resgate'>('deposito');
+  const [newSavName, setNewSavName] = useState('');
+  const [newSavTarget, setNewSavTarget] = useState('');
+  const [newSavInitial, setNewSavInitial] = useState('');
 
   // Transfer form
   const [trfFrom, setTrfFrom] = useState(accounts[0]?.id || '');
   const [trfTo, setTrfTo] = useState(accounts[1]?.id || '');
   const [trfAmount, setTrfAmount] = useState('');
 
-  // Investment yield form
+  // Investment form
+  const [invMode, setInvMode] = useState<'rendimento' | 'criar'>(investments.length > 0 ? 'rendimento' : 'criar');
   const [invId, setInvId] = useState(investments[0]?.id || '');
   const [invAmount, setInvAmount] = useState('');
   const [invType, setInvType] = useState('juros');
+  const [newInvName, setNewInvName] = useState('');
+  const [newInvType, setNewInvType] = useState<InvestmentType>('obrigacoes');
+  const [newInvAmount, setNewInvAmount] = useState('');
+  const [newInvInstitution, setNewInvInstitution] = useState('');
+  const [newInvReturnRate, setNewInvReturnRate] = useState('17.5');
 
   if (!isOpen) return null;
 
@@ -115,16 +125,35 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
 
   const handleSavingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!savAmount || Number(savAmount) <= 0 || !savGoalId) return;
     setLoading(true);
     try {
-      await contributeSavings({
-        goalId: savGoalId,
-        amount: Number(savAmount),
-        type: savType,
-        accountId: savAccount,
-      });
-      showSuccess('Operação de poupança efectuada com sucesso!');
+      if (savMode === 'criar') {
+        if (!newSavName.trim() || !newSavTarget) return;
+        const target = Number(newSavTarget);
+        const initial = Number(newSavInitial) || 0;
+        await addSavingsGoal({
+          name: newSavName.trim(),
+          targetAmount: target,
+          initialAmount: initial,
+          currentAmount: initial,
+          startDate: new Date().toISOString().split('T')[0],
+          deadline: `${new Date().getFullYear() + 1}-12-31`,
+          monthlyTarget: Math.round(target / 12),
+          frequency: 'mensal',
+          accountId: savAccount,
+          status: 'em_andamento'
+        });
+        showSuccess('Nova meta de poupança criada com sucesso!');
+      } else {
+        if (!savAmount || Number(savAmount) <= 0 || !savGoalId) return;
+        await contributeSavings({
+          goalId: savGoalId,
+          amount: Number(savAmount),
+          type: savType,
+          accountId: savAccount,
+        });
+        showSuccess('Operação de poupança efectuada com sucesso!');
+      }
     } finally {
       setLoading(false);
     }
@@ -149,16 +178,34 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
 
   const handleInvestmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invAmount || Number(invAmount) <= 0 || !invId) return;
     setLoading(true);
     try {
-      await addInvestmentYield({
-        investmentId: invId,
-        amount: Number(invAmount),
-        type: invType,
-        notes: 'Registo rápido de rendimento'
-      });
-      showSuccess('Rendimento de investimento registado!');
+      if (invMode === 'criar') {
+        if (!newInvName.trim() || !newInvAmount) return;
+        const invested = Number(newInvAmount);
+        await addInvestment({
+          name: newInvName.trim(),
+          type: newInvType,
+          institution: newInvInstitution.trim() || 'BODIVA / Banco Comercial',
+          investedAmount: invested,
+          currentValue: invested,
+          expectedValue: invested * (1 + (Number(newInvReturnRate) || 15) / 100),
+          startDate: new Date().toISOString().split('T')[0],
+          returnRate: Number(newInvReturnRate) || 15,
+          returnsReceived: 0,
+          status: 'ativo'
+        });
+        showSuccess('Novo investimento registado com sucesso!');
+      } else {
+        if (!invAmount || Number(invAmount) <= 0 || !invId) return;
+        await addInvestmentYield({
+          investmentId: invId,
+          amount: Number(invAmount),
+          type: invType,
+          notes: 'Registo rápido de rendimento'
+        });
+        showSuccess('Rendimento de investimento registado!');
+      }
     } finally {
       setLoading(false);
     }
@@ -166,13 +213,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center space-x-2">
-            <span className="text-lg font-bold text-slate-900 dark:text-white">Novo Movimento Rápido</span>
+            <span className="text-lg font-black text-slate-900 dark:text-white">Movimento Rápido</span>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -182,7 +229,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
           <button
             type="button"
             onClick={() => setActiveTab('despesa')}
-            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === 'despesa'
                 ? 'bg-rose-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -194,7 +241,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
           <button
             type="button"
             onClick={() => setActiveTab('receita')}
-            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === 'receita'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -206,7 +253,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
           <button
             type="button"
             onClick={() => setActiveTab('poupanca')}
-            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === 'poupanca'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -218,7 +265,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
           <button
             type="button"
             onClick={() => setActiveTab('transferencia')}
-            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === 'transferencia'
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -230,7 +277,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
           <button
             type="button"
             onClick={() => setActiveTab('investimento')}
-            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === 'investimento'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -248,50 +295,66 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
               <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center mb-3">
                 <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <p className="text-base font-semibold">{successMsg}</p>
+              <p className="text-base font-bold">{successMsg}</p>
             </div>
           ) : (
             <>
               {/* TAB DESPESA */}
               {activeTab === 'despesa' && (
-                <form onSubmit={handleExpenseSubmit} className="space-y-4">
+                <form onSubmit={handleExpenseSubmit} className="space-y-3.5 text-xs">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Valor da Despesa ({settings.currency || 'Kz'}) *
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Valor ({settings.currency || 'Kz'}) *
                     </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="Ex: 55000"
-                        value={expAmount}
-                        onChange={e => setExpAmount(e.target.value)}
-                        required
-                        autoFocus
-                        className="w-full text-2xl font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-hidden text-slate-900 dark:text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Descrição *</label>
                     <input
-                      type="text"
-                      placeholder="Ex: Creche, Alimentação Casa, Matabicho..."
-                      value={expDescription}
-                      onChange={e => setExpDescription(e.target.value)}
+                      type="number"
+                      step="any"
+                      placeholder="Ex: 25000"
+                      value={expAmount}
+                      onChange={e => setExpAmount(e.target.value)}
                       required
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                      autoFocus
+                      className="w-full text-2xl font-black px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono focus:outline-hidden"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Descrição *</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Almoço familiar, Gasolina, Supermercado..."
+                      value={expDescription}
+                      onChange={e => setExpDescription(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Recurrence Classification */}
+                  <div className="p-2.5 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800/60">
+                    <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1 flex items-center gap-1">
+                      <Repeat className="w-3.5 h-3.5" />
+                      Classificação de Recorrência
+                    </label>
+                    <select
+                      value={expRecurrence}
+                      onChange={e => setExpRecurrence(e.target.value as RecurrenceType)}
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
+                    >
+                      <option value="nenhuma">🔹 Despesa Pontual (Única vez)</option>
+                      <option value="mensal">🔁 Recorrente Mensal (Renda, Propina, Fibra...)</option>
+                      <option value="semanal">🔁 Recorrente Semanal</option>
+                      <option value="anual">🔁 Recorrente Anual</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Categoria *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Categoria</label>
                       <select
                         value={expCategory}
                         onChange={e => setExpCategory(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {categories.filter(c => c.type === 'expense').map(c => (
                           <option key={c.id} value={c.id}>{c.name}</option>
@@ -300,70 +363,39 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Pessoa / Família *</label>
-                      <select
-                        value={expPerson}
-                        onChange={e => setExpPerson(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
-                      >
-                        {people.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.relationship})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Conta / Origem *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Conta Bancária</label>
                       <select
                         value={expAccount}
                         onChange={e => setExpAccount(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {accounts.map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </select>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Forma de Pagamento</label>
-                      <select
-                        value={expPaymentMethod}
-                        onChange={e => setExpPaymentMethod(e.target.value as PaymentMethod)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500"
-                      >
-                        <option value="multicaixa">Multicaixa / Express</option>
-                        <option value="dinheiro">Dinheiro Físico</option>
-                        <option value="transferencia">Transferência Bancária</option>
-                        <option value="cartao">Cartão de Débito/Crédito</option>
-                        <option value="debito_directo">Débito Directo</option>
-                        <option value="outro">Outro</option>
-                      </select>
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Data</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
                       <input
                         type="date"
                         value={expDate}
                         onChange={e => setExpDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Estado</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Estado</label>
                       <select
                         value={expStatus}
                         onChange={e => setExpStatus(e.target.value as ExpenseStatus)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
                       >
-                        <option value="pago">Pago</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="previsto">Previsto</option>
+                        <option value="pago">✓ Pago</option>
+                        <option value="previsto">⏰ Previsto</option>
+                        <option value="pendente">⏳ Pendente</option>
                       </select>
                     </div>
                   </div>
@@ -371,7 +403,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl shadow-md transition-colors disabled:opacity-50 mt-4 cursor-pointer"
+                    className="w-full py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 mt-4 cursor-pointer"
                   >
                     {loading ? 'A registar...' : 'Guardar Despesa'}
                   </button>
@@ -380,42 +412,42 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
 
               {/* TAB RECEITA */}
               {activeTab === 'receita' && (
-                <form onSubmit={handleIncomeSubmit} className="space-y-4">
+                <form onSubmit={handleIncomeSubmit} className="space-y-3.5 text-xs">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Valor da Receita ({settings.currency || 'Kz'}) *
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Valor ({settings.currency || 'Kz'}) *
                     </label>
                     <input
                       type="number"
                       step="any"
-                      placeholder="Ex: 650000"
+                      placeholder="Ex: 500000"
                       value={incAmount}
                       onChange={e => setIncAmount(e.target.value)}
                       required
                       autoFocus
-                      className="w-full text-2xl font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden text-slate-900 dark:text-white"
+                      className="w-full text-2xl font-black px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono focus:outline-hidden"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Descrição *</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Descrição *</label>
                     <input
                       type="text"
-                      placeholder="Ex: Salário Mensal, Consultoria, Vendas..."
+                      placeholder="Ex: Salário Mensal, Subsídio, Consultoria..."
                       value={incDescription}
                       onChange={e => setIncDescription(e.target.value)}
                       required
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Categoria *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Categoria</label>
                       <select
                         value={incCategory}
                         onChange={e => setIncCategory(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {categories.filter(c => c.type === 'income').map(c => (
                           <option key={c.id} value={c.id}>{c.name}</option>
@@ -424,11 +456,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Conta de Destino *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Conta Creditada</label>
                       <select
                         value={incAccount}
                         onChange={e => setIncAccount(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {accounts.map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
@@ -437,25 +469,24 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Fonte / Entidade Pagadora</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Fonte / Entidade</label>
                       <input
                         type="text"
                         placeholder="Ex: Empresa, Cliente..."
                         value={incSource}
                         onChange={e => setIncSource(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                       />
                     </div>
-
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Data</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
                       <input
                         type="date"
                         value={incDate}
                         onChange={e => setIncDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                       />
                     </div>
                   </div>
@@ -463,76 +494,146 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md transition-colors disabled:opacity-50 mt-4 cursor-pointer"
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 mt-4 cursor-pointer"
                   >
                     {loading ? 'A registar...' : 'Guardar Receita'}
                   </button>
                 </form>
               )}
 
-              {/* TAB POUPANÇA */}
+              {/* TAB POUPANÇA (Adicionar ou Contribuir) */}
               {activeTab === 'poupanca' && (
-                <form onSubmit={handleSavingsSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Meta de Poupança *</label>
-                    <select
-                      value={savGoalId}
-                      onChange={e => setSavGoalId(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
-                    >
-                      {savingsGoals.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
+                <form onSubmit={handleSavingsSubmit} className="space-y-3.5 text-xs">
+                  {/* Mode Selector */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
                     <button
                       type="button"
-                      onClick={() => setSavType('deposito')}
-                      className={`py-2 text-xs font-bold rounded-lg border transition-colors ${
-                        savType === 'deposito'
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      onClick={() => setSavMode('contribuir')}
+                      className={`py-1.5 rounded-lg transition-colors cursor-pointer ${
+                        savMode === 'contribuir'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      + Reforçar (Depósito)
+                      Contribuir / Resgatar
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSavType('resgate')}
-                      className={`py-2 text-xs font-bold rounded-lg border transition-colors ${
-                        savType === 'resgate'
-                          ? 'bg-amber-600 border-amber-600 text-white'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      onClick={() => setSavMode('criar')}
+                      className={`py-1.5 rounded-lg transition-colors cursor-pointer ${
+                        savMode === 'criar'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      - Retirar (Resgate)
+                      + Nova Meta de Poupança
                     </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Valor ({settings.currency || 'Kz'}) *
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="Ex: 50000"
-                      value={savAmount}
-                      onChange={e => setSavAmount(e.target.value)}
-                      required
-                      className="w-full text-2xl font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                    />
-                  </div>
+                  {savMode === 'criar' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nome da Meta *</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Fundo de Emergência, Compra de Casa..."
+                          value={newSavName}
+                          onChange={e => setNewSavName(e.target.value)}
+                          required
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Valor-Alvo ({settings.currency || 'Kz'}) *</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 2000000"
+                            value={newSavTarget}
+                            onChange={e => setNewSavTarget(e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Valor Inicial ({settings.currency || 'Kz'})</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 50000"
+                            value={newSavInitial}
+                            onChange={e => setNewSavInitial(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Meta de Poupança *</label>
+                        <select
+                          value={savGoalId}
+                          onChange={e => setSavGoalId(e.target.value)}
+                          required
+                          className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                        >
+                          {savingsGoals.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSavType('deposito')}
+                          className={`py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
+                            savType === 'deposito'
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                              : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          + Reforçar (Depósito)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSavType('resgate')}
+                          className={`py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
+                            savType === 'resgate'
+                              ? 'bg-amber-600 border-amber-600 text-white shadow-xs'
+                              : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          − Retirar (Resgate)
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Valor ({settings.currency || 'Kz'}) *
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="Ex: 50000"
+                          value={savAmount}
+                          onChange={e => setSavAmount(e.target.value)}
+                          required
+                          className="w-full text-xl font-black px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Conta Bancária Associada</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Conta Bancária Associada</label>
                     <select
                       value={savAccount}
                       onChange={e => setSavAccount(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                      className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                     >
                       {accounts.map(a => (
                         <option key={a.id} value={a.id}>{a.name}</option>
@@ -543,23 +644,23 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md transition-colors disabled:opacity-50 mt-4 cursor-pointer"
+                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 mt-4 cursor-pointer"
                   >
-                    {loading ? 'A registar...' : 'Confirmar Operação'}
+                    {loading ? 'A registar...' : savMode === 'criar' ? 'Criar Meta de Poupança' : 'Confirmar Operação'}
                   </button>
                 </form>
               )}
 
               {/* TAB TRANSFERÊNCIA */}
               {activeTab === 'transferencia' && (
-                <form onSubmit={handleTransferSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <form onSubmit={handleTransferSubmit} className="space-y-3.5 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Conta de Origem *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Conta de Origem *</label>
                       <select
                         value={trfFrom}
                         onChange={e => setTrfFrom(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {accounts.map(a => (
                           <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()} Kz)</option>
@@ -568,11 +669,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Conta de Destino *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Conta de Destino *</label>
                       <select
                         value={trfTo}
                         onChange={e => setTrfTo(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         {accounts.map(a => (
                           <option key={a.id} value={a.id}>{a.name} ({a.balance.toLocaleString()} Kz)</option>
@@ -582,7 +683,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Valor a Transferir ({settings.currency || 'Kz'}) *
                     </label>
                     <input
@@ -592,74 +693,171 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, i
                       value={trfAmount}
                       onChange={e => setTrfAmount(e.target.value)}
                       required
-                      className="w-full text-2xl font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      className="w-full text-xl font-black px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono"
                     />
-                    <p className="text-xs text-slate-500 mt-1">Transferências entre contas não são contabilizadas como despesa.</p>
+                    <p className="text-xs text-slate-400 mt-1">Transferências entre contas não impactam a contabilidade de despesas.</p>
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading || trfFrom === trfTo}
-                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl shadow-md transition-colors disabled:opacity-50 mt-4 cursor-pointer"
+                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 mt-4 cursor-pointer"
                   >
                     {loading ? 'A transferir...' : 'Realizar Transferência'}
                   </button>
                 </form>
               )}
 
-              {/* TAB INVESTIMENTO */}
+              {/* TAB INVESTIMENTO (Adicionar ou Registar Rendimento) */}
               {activeTab === 'investimento' && (
-                <form onSubmit={handleInvestmentSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Investimento Activo *</label>
-                    <select
-                      value={invId}
-                      onChange={e => setInvId(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
+                <form onSubmit={handleInvestmentSubmit} className="space-y-3.5 text-xs">
+                  {/* Mode Selector */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setInvMode('rendimento')}
+                      className={`py-1.5 rounded-lg transition-colors cursor-pointer ${
+                        invMode === 'rendimento'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-300'
+                      }`}
                     >
-                      {investments.map(i => (
-                        <option key={i.id} value={i.id}>{i.name} ({i.institution})</option>
-                      ))}
-                    </select>
+                      Registar Rendimento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInvMode('criar')}
+                      className={`py-1.5 rounded-lg transition-colors cursor-pointer ${
+                        invMode === 'criar'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      + Novo Investimento
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Tipo de Movimento</label>
-                      <select
-                        value={invType}
-                        onChange={e => setInvType(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
-                      >
-                        <option value="juros">Juros / Cupão</option>
-                        <option value="dividendos">Dividendos</option>
-                        <option value="rendimentos">Rendimentos</option>
-                        <option value="mais_valias">Mais-Valias</option>
-                        <option value="aporte">Novo Aporte de Capital</option>
-                      </select>
-                    </div>
+                  {invMode === 'criar' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nome do Investimento *</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Obrigações do Tesouro BODIVA, DP BAI Rendimento..."
+                          value={newInvName}
+                          onChange={e => setNewInvName(e.target.value)}
+                          required
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valor ({settings.currency || 'Kz'}) *</label>
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="Ex: 112500"
-                        value={invAmount}
-                        onChange={e => setInvAmount(e.target.value)}
-                        required
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white"
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tipo de Activo</label>
+                          <select
+                            value={newInvType}
+                            onChange={e => setNewInvType(e.target.value as InvestmentType)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                          >
+                            <option value="obrigacoes">Obrigações do Tesouro (OT)</option>
+                            <option value="deposito_prazo">Depósito a Prazo</option>
+                            <option value="accoes">Acções BODIVA</option>
+                            <option value="fundos">Fundos</option>
+                            <option value="imobiliario">Imobiliário</option>
+                            <option value="negocios">Negócios</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Instituição</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: BODIVA, BAI, BFA..."
+                            value={newInvInstitution}
+                            onChange={e => setNewInvInstitution(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Capital Investido ({settings.currency || 'Kz'}) *</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 500000"
+                            value={newInvAmount}
+                            onChange={e => setNewInvAmount(e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Taxa Estimada (% a.a.)</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 17.5"
+                            value={newInvReturnRate}
+                            onChange={e => setNewInvReturnRate(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Investimento Activo *</label>
+                        <select
+                          value={invId}
+                          onChange={e => setInvId(e.target.value)}
+                          required
+                          className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                        >
+                          {investments.map(i => (
+                            <option key={i.id} value={i.id}>{i.name} ({i.institution})</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tipo de Rendimento</label>
+                          <select
+                            value={invType}
+                            onChange={e => setInvType(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                          >
+                            <option value="juros">Juros / Cupão</option>
+                            <option value="dividendos">Dividendos</option>
+                            <option value="rendimentos">Rendimentos</option>
+                            <option value="mais_valias">Mais-Valias</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Valor ({settings.currency || 'Kz'}) *</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 85000"
+                            value={invAmount}
+                            onChange={e => setInvAmount(e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md transition-colors disabled:opacity-50 mt-4 cursor-pointer"
+                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 mt-4 cursor-pointer"
                   >
-                    {loading ? 'A registar...' : 'Guardar Rendimento'}
+                    {loading ? 'A registar...' : invMode === 'criar' ? 'Registar Investimento' : 'Guardar Rendimento'}
                   </button>
                 </form>
               )}

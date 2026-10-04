@@ -64,18 +64,18 @@ const MainAppContent: React.FC = () => {
       case 'dashboard':
         return <DashboardView onSelectView={setCurrentView} onOpenQuickAdd={openQuickAddWithTab} />;
       case 'despesas':
-        return <DespesasView onOpenQuickAdd={() => openQuickAddWithTab('despesa')} />;
+        return <DespesasView onOpenQuickAdd={openQuickAddWithTab} onSelectView={setCurrentView} />;
       case 'receitas':
-        return <ReceitasView onOpenQuickAdd={() => openQuickAddWithTab('receita')} />;
+        return <ReceitasView onOpenQuickAdd={openQuickAddWithTab} onSelectView={setCurrentView} />;
       case 'transferencias':
       case 'contas':
         return <ContasView />;
       case 'orcamento':
         return <OrcamentoView />;
       case 'poupanca':
-        return <PoupancaView />;
+        return <PoupancaView onOpenQuickAdd={openQuickAddWithTab} onSelectView={setCurrentView} />;
       case 'investimentos':
-        return <InvestimentosView />;
+        return <InvestimentosView onOpenQuickAdd={openQuickAddWithTab} onSelectView={setCurrentView} />;
       case 'dividas':
         return <DividasView />;
       case 'patrimonio':
@@ -87,7 +87,7 @@ const MainAppContent: React.FC = () => {
       case 'recorrencias':
         return <DespesasRecorrentesView />;
       case 'calendario':
-        return <CalendarioView />;
+        return <CalendarioView onSelectView={setCurrentView} onOpenQuickAdd={openQuickAddWithTab} />;
       case 'pessoas':
         return <FamiliaView />;
       case 'categorias':
