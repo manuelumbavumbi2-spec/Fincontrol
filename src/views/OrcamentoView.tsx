@@ -19,14 +19,31 @@ import {
   Layers,
   ArrowUpRight,
   Sparkles,
-  Info
+  Info,
+  Trash2,
+  X,
+  Tag,
+  FolderPlus,
+  Check,
+  HelpCircle
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
-import { Expense } from '../types';
+import { Expense, Category } from '../types';
 
 export const OrcamentoView: React.FC = () => {
-  const { budgets, updateBudget, filteredExpenses, categories, people, accounts, settings } = useFinance();
+  const {
+    budgets,
+    updateBudget,
+    addCategory,
+    deleteCategory,
+    filteredExpenses,
+    categories,
+    people,
+    accounts,
+    settings
+  } = useFinance();
+
   const cur = settings.currency || 'Kz';
 
   const currentBudget = budgets[0] || {
@@ -40,6 +57,8 @@ export const OrcamentoView: React.FC = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [overallLimit, setOverallLimit] = useState(String(currentBudget.overallLimit));
+  
+  // Track limits by category
   const [catLimits, setCatLimits] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const cb of currentBudget.categories) {
@@ -48,14 +67,59 @@ export const OrcamentoView: React.FC = () => {
     return map;
   });
 
+  // Track which category IDs are explicitly included in the budget
+  const [budgetedCategoryIds, setBudgetedCategoryIds] = useState<string[]>(() => {
+    if (currentBudget.categories && currentBudget.categories.length > 0) {
+      return currentBudget.categories.map(c => c.categoryId);
+    }
+    // Default initial budgeted category IDs
+    return ['cat_alim', 'cat_creche', 'cat_univ', 'cat_trans', 'cat_net', 'cat_vest', 'cat_casa', 'cat_tec', 'cat_fam'];
+  });
+
   // State to track which categories have their expenses expanded - default TRUE to illustrate expenses!
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [expandAll, setExpandAll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Modals
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addMode, setAddMode] = useState<'existing' | 'new'>('existing');
+  const [selectedExistingCatId, setSelectedExistingCatId] = useState('');
+  const [existingCatLimit, setExistingCatLimit] = useState('50000');
+  
+  // New category creation form
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState('#3B82F6');
+  const [newCatLimit, setNewCatLimit] = useState('50000');
+
+  // Remove confirmation modal
+  const [categoryToRemove, setCategoryToRemove] = useState<Category | null>(null);
+
+  // Notification / Feedback banner
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  const showFeedback = (text: string, type: 'success' | 'info' = 'success') => {
+    setFeedbackMsg({ text, type });
+    setTimeout(() => setFeedbackMsg(null), 4000);
+  };
+
   const categoryMap = new Map(categories.map(c => [c.id, c.name]));
   const personMap = new Map(people.map(p => [p.id, p.name]));
   const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+
+  // Expense categories that are currently budgeted
+  const budgetedCategories = useMemo(() => {
+    return categories
+      .filter(c => c.type === 'expense')
+      .filter(c => budgetedCategoryIds.includes(c.id));
+  }, [categories, budgetedCategoryIds]);
+
+  // Expense categories that are not currently in the budget
+  const unbudgetedCategories = useMemo(() => {
+    return categories
+      .filter(c => c.type === 'expense')
+      .filter(c => !budgetedCategoryIds.includes(c.id));
+  }, [categories, budgetedCategoryIds]);
 
   // Group non-cancelled expenses by category
   const expensesByCategory = useMemo(() => {
@@ -88,29 +152,28 @@ export const OrcamentoView: React.FC = () => {
   const overallRemaining = Math.max(0, overall - overallSpent);
   const overallPercent = overall > 0 ? (overallSpent / overall) * 100 : 0;
 
-  const expenseCategories = categories.filter(c => c.type === 'expense');
-
-  // Sum of all category ceiling limits
+  // Sum of all budgeted category ceiling limits
   const totalCategoryLimits = useMemo(() => {
-    return expenseCategories.reduce((acc, cat) => {
+    return budgetedCategories.reduce((acc, cat) => {
       const limit = Number(catLimits[cat.id]) || (cat.id === 'cat_alim' ? 200000 : cat.id === 'cat_creche' ? 60000 : 30000);
       return acc + limit;
     }, 0);
-  }, [expenseCategories, catLimits]);
+  }, [budgetedCategories, catLimits]);
 
   // Categories exceeded count
   const exceededCount = useMemo(() => {
-    return expenseCategories.filter(cat => {
+    return budgetedCategories.filter(cat => {
       const limit = Number(catLimits[cat.id]) || (cat.id === 'cat_alim' ? 200000 : cat.id === 'cat_creche' ? 60000 : 30000);
       const spent = spentByCategory[cat.id] || 0;
       return spent > limit;
     }).length;
-  }, [expenseCategories, catLimits, spentByCategory]);
+  }, [budgetedCategories, catLimits, spentByCategory]);
 
+  // Save budget limits
   const handleSave = async () => {
-    const newCategories = Object.entries(catLimits).map(([catId, amt]) => ({
+    const newCategories = budgetedCategoryIds.map(catId => ({
       categoryId: catId,
-      limitAmount: Number(amt) || 0
+      limitAmount: Number(catLimits[catId]) || (catId === 'cat_alim' ? 200000 : catId === 'cat_creche' ? 60000 : 30000)
     }));
 
     await updateBudget({
@@ -119,6 +182,121 @@ export const OrcamentoView: React.FC = () => {
       categories: newCategories
     });
     setIsEditing(false);
+    showFeedback('Limites orçamentais guardados com sucesso!');
+  };
+
+  // Add existing category to budget
+  const handleAddExistingCategory = async () => {
+    if (!selectedExistingCatId) return;
+    const limit = Number(existingCatLimit) || 30000;
+    
+    const updatedIds = [...budgetedCategoryIds, selectedExistingCatId];
+    setBudgetedCategoryIds(updatedIds);
+    const newLimits = { ...catLimits, [selectedExistingCatId]: String(limit) };
+    setCatLimits(newLimits);
+
+    const newCategories = updatedIds.map(catId => ({
+      categoryId: catId,
+      limitAmount: Number(newLimits[catId]) || 30000
+    }));
+
+    await updateBudget({
+      ...currentBudget,
+      categories: newCategories
+    });
+
+    const catName = categoryMap.get(selectedExistingCatId) || 'Categoria';
+    showFeedback(`Categoria "${catName}" adicionada ao orçamento mensal com tecto de ${formatCurrency(limit, cur)}!`);
+    setIsAddModalOpen(false);
+    setSelectedExistingCatId('');
+  };
+
+  // Create new category and add to budget
+  const handleCreateAndAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    const limit = Number(newCatLimit) || 50000;
+
+    const created = await addCategory({
+      name: newCatName.trim(),
+      type: 'expense',
+      color: newCatColor,
+      icon: 'Tag'
+    });
+
+    const updatedIds = [...budgetedCategoryIds, created.id];
+    setBudgetedCategoryIds(updatedIds);
+    const newLimits = { ...catLimits, [created.id]: String(limit) };
+    setCatLimits(newLimits);
+
+    const newCategories = updatedIds.map(catId => ({
+      categoryId: catId,
+      limitAmount: Number(newLimits[catId]) || 30000
+    }));
+
+    await updateBudget({
+      ...currentBudget,
+      categories: newCategories
+    });
+
+    showFeedback(`Nova categoria "${created.name}" criada e adicionada com tecto de ${formatCurrency(limit, cur)}!`);
+    setIsAddModalOpen(false);
+    setNewCatName('');
+    setNewCatLimit('50000');
+  };
+
+  // Quick 1-click add from unbudgeted list
+  const handleQuickAddCategory = async (catId: string) => {
+    const limit = 50000;
+    const updatedIds = [...budgetedCategoryIds, catId];
+    setBudgetedCategoryIds(updatedIds);
+    const newLimits = { ...catLimits, [catId]: String(limit) };
+    setCatLimits(newLimits);
+
+    const newCategories = updatedIds.map(id => ({
+      categoryId: id,
+      limitAmount: Number(newLimits[id]) || 30000
+    }));
+
+    await updateBudget({
+      ...currentBudget,
+      categories: newCategories
+    });
+
+    const catName = categoryMap.get(catId) || 'Categoria';
+    showFeedback(`Categoria "${catName}" adicionada ao orçamento com tecto de ${formatCurrency(limit, cur)}!`);
+  };
+
+  // Remove category from budget
+  const handleConfirmRemoveFromBudget = async (deleteFromSystem: boolean = false) => {
+    if (!categoryToRemove) return;
+    const catId = categoryToRemove.id;
+    const catName = categoryToRemove.name;
+
+    const updatedIds = budgetedCategoryIds.filter(id => id !== catId);
+    setBudgetedCategoryIds(updatedIds);
+
+    const newLimits = { ...catLimits };
+    delete newLimits[catId];
+    setCatLimits(newLimits);
+
+    const newCategories = updatedIds.map(id => ({
+      categoryId: id,
+      limitAmount: Number(newLimits[id]) || 30000
+    }));
+
+    await updateBudget({
+      ...currentBudget,
+      categories: newCategories
+    });
+
+    if (deleteFromSystem) {
+      await deleteCategory(catId);
+      showFeedback(`Categoria "${catName}" eliminada do sistema e do orçamento.`);
+    } else {
+      showFeedback(`Categoria "${catName}" removida do orçamento mensal. As despesas continuam guardadas.`);
+    }
+
+    setCategoryToRemove(null);
   };
 
   const toggleCategoryExpand = (catId: string) => {
@@ -159,9 +337,9 @@ export const OrcamentoView: React.FC = () => {
 
   // Filter categories and their expenses based on search query
   const filteredCategoryList = useMemo(() => {
-    if (!searchQuery.trim()) return expenseCategories;
+    if (!searchQuery.trim()) return budgetedCategories;
     const q = searchQuery.toLowerCase().trim();
-    return expenseCategories.filter(cat => {
+    return budgetedCategories.filter(cat => {
       const matchCat = cat.name.toLowerCase().includes(q);
       const catExps = expensesByCategory[cat.id] || [];
       const matchExp = catExps.some(e => 
@@ -172,10 +350,30 @@ export const OrcamentoView: React.FC = () => {
       );
       return matchCat || matchExp;
     });
-  }, [expenseCategories, searchQuery, expensesByCategory, personMap]);
+  }, [budgetedCategories, searchQuery, expensesByCategory, personMap]);
 
   return (
     <div className="space-y-6">
+      {/* Feedback Banner */}
+      {feedbackMsg && (
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-xs transition-all ${
+          feedbackMsg.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+            : 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
+        }`}>
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{feedbackMsg.text}</span>
+          </div>
+          <button
+            onClick={() => setFeedbackMsg(null)}
+            className="p-1 hover:bg-black/10 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner Overview */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -192,18 +390,26 @@ export const OrcamentoView: React.FC = () => {
                 Total Gasto Computado: <strong className="text-rose-600 dark:text-rose-400">{formatCurrency(overallSpent, cur)}</strong>
               </span>
               <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                {filteredExpenses.filter(e => e.status !== 'cancelado').length} despesas consideradas
+                {budgetedCategories.length} categorias orçamentadas
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Adicionar Categoria</span>
+            </button>
+
             <button
               onClick={() => {
                 if (isEditing) handleSave();
                 else setIsEditing(true);
               }}
-              className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
             >
               {isEditing ? <Save className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
               <span>{isEditing ? 'Gravar Alterações' : 'Ajustar Limites'}</span>
@@ -282,10 +488,10 @@ export const OrcamentoView: React.FC = () => {
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Receipt className="w-5 h-5 text-blue-600" />
-              Tectos por Categoria & Despesas Consideradas nos Tectos
+              Tectos por Categoria ({budgetedCategories.length}) & Despesas Consideradas
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Cada tecto abaixo ilustra detalhadamente as despesas reais computadas, a percentagem de consumo e a margem restante.
+              Adicione ou remova categorias do orçamento mensal. Cada tecto ilustra detalhadamente as despesas computadas.
             </p>
           </div>
 
@@ -295,12 +501,20 @@ export const OrcamentoView: React.FC = () => {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Pesquisar despesa ou pessoa..."
+                placeholder="Pesquisar despesa ou categoria..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white w-48 sm:w-56 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
               />
             </div>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Adicionar Categoria</span>
+            </button>
 
             <button
               onClick={handleToggleExpandAll}
@@ -312,6 +526,7 @@ export const OrcamentoView: React.FC = () => {
           </div>
         </div>
 
+        {/* Grid of Budgeted Categories */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredCategoryList.map(cat => {
             const limit = Number(catLimits[cat.id]) || (cat.id === 'cat_alim' ? 200000 : cat.id === 'cat_creche' ? 60000 : 30000);
@@ -336,7 +551,7 @@ export const OrcamentoView: React.FC = () => {
             return (
               <div
                 key={cat.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors relative group"
               >
                 <div>
                   <div className="flex items-center justify-between">
@@ -347,7 +562,20 @@ export const OrcamentoView: React.FC = () => {
                       />
                       <span>{cat.name}</span>
                     </span>
-                    {getAlertBadge(pct)}
+
+                    <div className="flex items-center space-x-1.5">
+                      {getAlertBadge(pct)}
+                      
+                      {/* REMOVER CATEGORIA DO ORÇAMENTO BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => setCategoryToRemove(cat)}
+                        title="Remover esta categoria do orçamento mensal"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex justify-between items-baseline text-xs mt-3">
@@ -493,7 +721,329 @@ export const OrcamentoView: React.FC = () => {
             );
           })}
         </div>
+
+        {filteredCategoryList.length === 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+            <PieChart className="w-10 h-10 mx-auto text-slate-400" />
+            <h4 className="font-bold text-slate-800 dark:text-slate-200">Nenhuma categoria encontrada no orçamento</h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Adicione categorias ao seu orçamento mensal para acompanhar os tectos de gastos e as despesas computadas.
+            </p>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Adicionar Categoria ao Orçamento</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* UNBUDGETED CATEGORIES SECTION - Quick 1-click addition */}
+      {unbudgetedCategories.length > 0 && (
+        <div className="bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <FolderPlus className="w-4 h-4 text-emerald-600" />
+                Outras Categorias Disponíveis para Orçamentar ({unbudgetedCategories.length})
+              </h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Estas categorias de despesa ainda não têm tecto orçamental definido. Clique em "+ Adicionar" para incluí-las no orçamento.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {unbudgetedCategories.map(cat => {
+              const catExpenses = expensesByCategory[cat.id] || [];
+              const spent = spentByCategory[cat.id] || 0;
+
+              return (
+                <div
+                  key={cat.id}
+                  className="flex items-center space-x-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-2xs"
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: cat.color || '#64748B' }}
+                  />
+                  <span>{cat.name}</span>
+                  {spent > 0 && (
+                    <span className="text-[10px] text-rose-500 font-bold">
+                      ({formatCurrency(spent, cur)})
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddCategory(cat.id)}
+                    className="ml-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-blue-200 dark:border-blue-800"
+                  >
+                    + Definir Tecto
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADICIONAR CATEGORIA AO ORÇAMENTO */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-blue-600" />
+                Adicionar Categoria ao Orçamento
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAddMode('existing')}
+                className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  addMode === 'existing'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                Categoria Existente
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('new')}
+                className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  addMode === 'new'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                Criar Nova Categoria
+              </button>
+            </div>
+
+            {/* Form: Existing Category */}
+            {addMode === 'existing' && (
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Seleccionar Categoria:
+                  </label>
+                  <select
+                    value={selectedExistingCatId}
+                    onChange={e => setSelectedExistingCatId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold cursor-pointer focus:outline-hidden"
+                  >
+                    <option value="">-- Escolha uma categoria --</option>
+                    {unbudgetedCategories.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                    {unbudgetedCategories.length === 0 && (
+                      <option disabled value="">
+                        Todas as categorias já estão no orçamento
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Tecto Orçamental Mensal ({cur}):
+                  </label>
+                  <input
+                    type="number"
+                    value={existingCatLimit}
+                    onChange={e => setExistingCatLimit(e.target.value)}
+                    placeholder="Ex: 50000"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                  />
+                  <div className="flex gap-1.5 mt-1.5">
+                    {[20000, 30000, 50000, 100000].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setExistingCatLimit(String(val))}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md text-[10px] font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                      >
+                        {formatCurrency(val, cur)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddExistingCategory}
+                    disabled={!selectedExistingCatId}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    Adicionar ao Orçamento
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Form: New Category */}
+            {addMode === 'new' && (
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Nome da Categoria:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Combustível, Ginásio, Farmácia..."
+                    value={newCatName}
+                    onChange={e => setNewCatName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Cor da Categoria:
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B'].map(color => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewCatColor(color)}
+                        className={`w-7 h-7 rounded-full cursor-pointer flex items-center justify-center transition-transform ${
+                          newCatColor === color ? 'scale-125 ring-2 ring-blue-500 ring-offset-2' : ''
+                        }`}
+                        style={{ backgroundColor: color }}
+                      >
+                        {newCatColor === color && <Check className="w-3.5 h-3.5 text-white" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Tecto Orçamental Mensal ({cur}):
+                  </label>
+                  <input
+                    type="number"
+                    value={newCatLimit}
+                    onChange={e => setNewCatLimit(e.target.value)}
+                    placeholder="Ex: 50000"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateAndAddCategory}
+                    disabled={!newCatName.trim()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    Criar e Adicionar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIRMAÇÃO DE REMOÇÃO DE CATEGORIA */}
+      {categoryToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/50 rounded-2xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                  Remover Categoria do Orçamento?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {categoryToRemove.name}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Deseja remover <strong>{categoryToRemove.name}</strong> dos tectos orçamentais deste mês?
+              As despesas já registadas permanecerão intactas no seu histórico financeiro.
+            </p>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl text-xs space-y-1">
+              <div className="flex justify-between text-slate-500">
+                <span>Tecto actual:</span>
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {formatCurrency(Number(catLimits[categoryToRemove.id]) || 0, cur)}
+                </strong>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>Despesas associadas:</span>
+                <strong className="text-rose-600 dark:text-rose-400">
+                  {expensesByCategory[categoryToRemove.id]?.length || 0} despesa(s)
+                </strong>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setCategoryToRemove(null)}
+                className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleConfirmRemoveFromBudget(false)}
+                className="flex-1 py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Remover do Orçamento
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleConfirmRemoveFromBudget(true)}
+                className="py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                title="Eliminar também a categoria da lista de categorias"
+              >
+                Eliminar Categoria
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

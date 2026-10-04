@@ -5,6 +5,7 @@ import { Sidebar, ActiveView } from './components/layout/Sidebar';
 import { Navbar } from './components/layout/Navbar';
 import { MobileNav } from './components/layout/MobileNav';
 import { QuickAddModal } from './components/modals/QuickAddModal';
+import { FloatingCalculatorKeypad } from './components/common/FloatingCalculatorKeypad';
 
 // Views
 import { DashboardView } from './views/DashboardView';
@@ -150,6 +151,9 @@ const MainAppContent: React.FC = () => {
         onClose={() => setIsQuickAddOpen(false)}
         initialTab={quickAddTab}
       />
+
+      {/* Global Calculator & Keypad Widget - Visible throughout the entire system */}
+      <FloatingCalculatorKeypad />
     </div>
   );
 };

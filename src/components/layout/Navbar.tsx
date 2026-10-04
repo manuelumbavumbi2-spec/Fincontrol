@@ -7,7 +7,8 @@ import {
   Bell,
   Search,
   CheckCircle,
-  Calendar
+  Calendar,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance, PeriodFilter } from '../../context/FinanceContext';
@@ -120,6 +121,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               ))}
             </select>
           </div>
+
+          {/* Calculator & Keypad Global Trigger */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-calculator-keypad', { detail: { tab: 'calc' } }))}
+            title="Abrir Calculadora Financeira & Teclado"
+            className="flex items-center space-x-1 p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer text-xs font-semibold"
+          >
+            <Calculator className="w-4 h-4 text-blue-500" />
+            <span className="hidden xl:inline">Calculadora</span>
+          </button>
 
           {/* Dark Mode Toggle */}
           <button
