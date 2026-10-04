@@ -15,7 +15,28 @@ export function clearStoredToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// Check if running on a static hosting environment like Netlify
+export function isStaticHosting(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  return (
+    host.includes('netlify.app') ||
+    host.includes('vercel.app') ||
+    host.includes('github.io') ||
+    host.includes('pages.dev') ||
+    host.includes('firebaseapp.com') ||
+    host.includes('web.app') ||
+    window.location.protocol === 'file:'
+  );
+}
+
+let serverDisabled = isStaticHosting();
+
 async function tryServerRequest<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (serverDisabled) {
+    throw new Error('STATIC_HOSTING_MODE');
+  }
+
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
   headers.set('Content-Type', 'application/json');
@@ -24,27 +45,49 @@ async function tryServerRequest<T = any>(endpoint: string, options: RequestInit 
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(endpoint, {
-    ...options,
-    headers,
-  });
+  // Fast abort timeout (2.5 seconds) so failed servers never hang or block the UI
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-  // If server responded with 404 (common on static Netlify deployments where /api/* doesn't exist)
-  if (response.status === 404) {
-    throw new Error('API_NOT_FOUND_STATIC_HOSTING');
+  try {
+    const response = await fetch(endpoint, {
+      ...options,
+      headers,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    // If server responded with 404 or 405 (static host with no /api routes)
+    if (response.status === 404 || response.status === 405) {
+      serverDisabled = true;
+      throw new Error('API_NOT_FOUND_STATIC_HOSTING');
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      serverDisabled = true;
+      throw new Error('API_NON_JSON_RESPONSE');
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error || `Erro de rede: ${response.statusText}`);
+    }
+
+    return response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (
+      err.name === 'AbortError' ||
+      err.message?.includes('Failed to fetch') ||
+      err.message?.includes('NetworkError') ||
+      err.message?.includes('API_') ||
+      err.message === 'STATIC_HOSTING_MODE'
+    ) {
+      serverDisabled = true;
+    }
+    throw err;
   }
-
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error('API_NON_JSON_RESPONSE');
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.error || `Erro de rede: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 export const api = {

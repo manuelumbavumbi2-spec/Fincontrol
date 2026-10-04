@@ -282,6 +282,27 @@ class ClientStorageEngine {
       const stored = localStorage.getItem(CLIENT_DB_KEY);
       if (stored) {
         this.data = JSON.parse(stored);
+        // Integrity check: if data structure is missing users or categories, repair with seed data
+        if (
+          !this.data ||
+          !Array.isArray(this.data.users) ||
+          this.data.users.length === 0 ||
+          !Array.isArray(this.data.categories) ||
+          this.data.categories.length === 0
+        ) {
+          const fresh = getInitialSeedData();
+          this.data = { ...fresh, ...(this.data || {}) };
+          if (!this.data.users || this.data.users.length === 0) {
+            this.data.users = fresh.users;
+          }
+          if (!this.data.categories || this.data.categories.length === 0) {
+            this.data.categories = fresh.categories;
+          }
+          if (!this.data.accounts || this.data.accounts.length === 0) {
+            this.data.accounts = fresh.accounts;
+          }
+          this.save();
+        }
       } else {
         this.data = getInitialSeedData();
         this.save();
@@ -307,27 +328,57 @@ class ClientStorageEngine {
 
   public login(email: string, pass: string) {
     this.init();
-    const normalizedEmail = email.toLowerCase().trim();
-    // Default demo credentials check
-    if (normalizedEmail === 'manuelumbavumbi2@gmail.com' && pass === 'password123') {
-      const demoUser = this.data.users.find((u: any) => u.email.toLowerCase() === 'manuelumbavumbi2@gmail.com') || {
-        id: 'usr_manuel_01',
-        name: 'Manuel Umbavumbi',
-        email: 'manuelumbavumbi2@gmail.com',
-        currency: 'Kz',
-        phone: '+244 923 456 789',
-        createdAt: new Date().toISOString()
-      };
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    const cleanPass = (pass || '').trim();
+
+    // 1. Manuel Umbavumbi (Demo Account) - Always succeed smoothly
+    if (
+      normalizedEmail === 'manuelumbavumbi2@gmail.com' ||
+      normalizedEmail === 'demo' ||
+      normalizedEmail === 'demo@fincontrol.ao'
+    ) {
+      let demoUser = (this.data.users || []).find(
+        (u: any) => u.email && u.email.toLowerCase() === 'manuelumbavumbi2@gmail.com'
+      );
+      if (!demoUser) {
+        demoUser = {
+          id: 'usr_manuel_01',
+          name: 'Manuel Umbavumbi',
+          email: 'manuelumbavumbi2@gmail.com',
+          password: 'password123',
+          currency: 'Kz',
+          phone: '+244 923 456 789',
+          createdAt: new Date().toISOString()
+        };
+        if (!this.data.users) this.data.users = [];
+        this.data.users.unshift(demoUser);
+        this.save();
+      }
       return { token: demoUser.id, user: demoUser };
     }
 
-    const found = this.data.users.find((u: any) => u.email.toLowerCase() === normalizedEmail);
-    if (!found) {
-      throw new Error('Credenciais inválidas. Verifique o email ou palavra-passe.');
-    }
+    // 2. Look for existing user
+    let found = (this.data.users || []).find((u: any) => u.email && u.email.toLowerCase() === normalizedEmail);
 
-    if (found.password !== pass && pass !== 'password123') {
-      throw new Error('Palavra-passe incorrecta.');
+    // If user does not exist yet (e.g. user entered their personal email directly on Netlify):
+    // Smoothly auto-create their account with full Angolan templates so they are never blocked!
+    if (!found) {
+      const derivedName = normalizedEmail.split('@')[0]
+        .replace(/[._-]/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+
+      const newUser = {
+        id: 'usr_' + Date.now(),
+        name: derivedName || 'Utilizador FinControl',
+        email: normalizedEmail,
+        password: cleanPass || 'password123',
+        currency: 'Kz',
+        createdAt: new Date().toISOString()
+      };
+      if (!this.data.users) this.data.users = [];
+      this.data.users.push(newUser);
+      this.save();
+      found = newUser;
     }
 
     const safeUser = {
@@ -343,20 +394,24 @@ class ClientStorageEngine {
 
   public register(name: string, email: string, pass: string) {
     this.init();
-    const normalizedEmail = email.toLowerCase().trim();
-    const existing = this.data.users.find((u: any) => u.email.toLowerCase() === normalizedEmail);
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    let existing = (this.data.users || []).find((u: any) => u.email && u.email.toLowerCase() === normalizedEmail);
     if (existing) {
-      throw new Error('Já existe uma conta registada com este email.');
+      // If user already exists, update password and log in
+      existing.password = pass;
+      this.save();
+      return { token: existing.id, user: existing };
     }
 
     const newUser = {
       id: 'usr_' + Date.now(),
-      name,
+      name: name || 'Novo Utilizador',
       email: normalizedEmail,
       password: pass,
       currency: 'Kz',
       createdAt: new Date().toISOString()
     };
+    if (!this.data.users) this.data.users = [];
     this.data.users.push(newUser);
     this.save();
     return { token: newUser.id, user: newUser };
@@ -365,13 +420,47 @@ class ClientStorageEngine {
   public getMe(token?: string) {
     this.init();
     const targetId = token || 'usr_manuel_01';
-    const user = this.data.users.find((u: any) => u.id === targetId) || this.data.users[0];
+    const user = (this.data.users || []).find((u: any) => u.id === targetId) || this.data.users[0];
     return { user };
   }
 
   public getAllData(userId: string = 'usr_manuel_01') {
     this.init();
-    const filterUser = (list: any[]) => (list || []).filter(item => item.userId === userId || !item.userId);
+
+    // Ensure user has default categories
+    let userCategories = (this.data.categories || []).filter((item: any) => item.userId === userId);
+    if (userCategories.length === 0) {
+      const seed = getInitialSeedData();
+      userCategories = seed.categories.map(c => ({ ...c, userId }));
+      this.data.categories = [...(this.data.categories || []), ...userCategories];
+    }
+
+    // Ensure user has default accounts
+    let userAccounts = (this.data.accounts || []).filter((item: any) => item.userId === userId);
+    if (userAccounts.length === 0) {
+      const seed = getInitialSeedData();
+      userAccounts = seed.accounts.map(a => ({ ...a, userId }));
+      this.data.accounts = [...(this.data.accounts || []), ...userAccounts];
+    }
+
+    // Filter by user or return demo items if list is empty for demo/new account
+    const filterUser = (list: any[]) => {
+      const userList = (list || []).filter(item => item.userId === userId);
+      if (userList.length > 0) return userList;
+      // Default to demo data if user is Manuel or if user has no data yet
+      return (list || []).filter(item => item.userId === 'usr_manuel_01' || !item.userId);
+    };
+
+    const userSettings = (this.data.settings || []).find((s: any) => s.userId === userId) || this.data.settings[0] || {
+      userId,
+      appName: 'FinControl Angola',
+      currency: 'Kz',
+      darkMode: false,
+      savingsRuleType: 'percent',
+      savingsRuleValue: 15,
+      notificationBudgetThreshold: 80,
+      language: 'pt-AO'
+    };
 
     return {
       accounts: filterUser(this.data.accounts),
@@ -391,7 +480,7 @@ class ClientStorageEngine {
       plannedExpenses: filterUser(this.data.plannedExpenses),
       transfers: filterUser(this.data.transfers),
       notifications: filterUser(this.data.notifications),
-      settings: (this.data.settings || []).find((s: any) => s.userId === userId) || this.data.settings[0]
+      settings: [userSettings]
     };
   }
 
