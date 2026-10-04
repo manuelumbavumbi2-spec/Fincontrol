@@ -1,0 +1,7 @@
+{
+  "name": "FinControl Angola",
+  "description": "Gestão Financeira Pessoal e Familiar em Angola. Controle as suas despesas, organize o seu dinheiro e construa o seu património.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
