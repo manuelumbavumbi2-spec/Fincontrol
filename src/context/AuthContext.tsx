@@ -17,39 +17,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(getStoredToken());
-  const [loading, setLoading] = useState<boolean>(true);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const stored = getStoredToken();
-        if (stored) {
-          const res = await api.getMe();
-          setUser(res.user);
-        } else {
-          // Auto-load demo user on first visit to provide immediate working experience
-          const res = await api.login({ email: 'manuelumbavumbi2@gmail.com', password: 'password123' });
-          setStoredToken(res.token);
-          setToken(res.token);
-          setUser(res.user);
-        }
-      } catch (err) {
-        console.warn('Auth initialization fallback:', err);
-        // Fallback demo user
-        setUser({
-          id: 'usr_manuel_01',
-          name: 'Manuel Umbavumbi',
-          email: 'manuelumbavumbi2@gmail.com',
-          phone: '+244 923 456 789',
-          currency: 'Kz',
-          createdAt: new Date().toISOString()
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadUser();
+    // Ao abrir o app, deve inicializar sempre a partir da tela de login
+    clearStoredToken();
+    setUser(null);
+    setToken(null);
+    setLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {
